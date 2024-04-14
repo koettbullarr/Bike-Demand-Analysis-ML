@@ -1,0 +1,606 @@
+---
+title: "Bike Sharing Dataset"
+author: "Nurzhanat Zhussup"
+output: 
+  pdf_document:
+    toc: TRUE
+    
+---
+
+# Introduction
+
+Bike sharing systems are new generation of traditional bike rentals where whole process from membership, rental and return back has become automatic. Through these systems, user is able to easily rent a bike from a particular position and return back at another position. Currently, there are about over 500 bike-sharing programs around the world which is composed of over 500 thousands bicycles. Today, there exists great interest in these systems due to their important role in traffic, environmental and health issues. 
+
+# Motivation for research
+
+Leveraging User Behavior for Bike-Sharing Business Success
+Bike-sharing systems have transformed urban transportation. Understanding user behavior is pivotal for enhancing operational efficiency and crafting effective marketing strategies. This research seeks to unveil user patterns impacted by seasons, weather, weekdays, and holidays. The insights generated will empower bike-sharing businesses to optimize resources and attract and retain users, fostering system growth and economic sustainability.
+
+# Research questions
+
+- How different are bike rental behaviors between casual and registered users?​
+- What are the bike rental patterns across seasons and months​
+- What is the impact of different weather conditions on bike rental​
+- Is there any significant differences in bike rental on holidays and workdays?
+- Which variables are most important in predicting total number bike rentals?
+
+# Data description
+
+	- instant: record index
+	- dteday : date
+	- season : season (1:winter, 2:spring, 3:summer, 4:fall)
+	- yr : year (0: 2011, 1:2012)
+	- mnth : month ( 1 to 12)
+	- hr : hour (0 to 23)
+	- holiday : weather day is holiday or not (extracted from http://dchr.dc.gov/page/holiday-schedule)
+	- weekday : day of the week
+	- workingday : if day is neither weekend nor holiday is 1, otherwise is 0.
+	- weathersit : 
+		- 1: Clear, Few clouds, Partly cloudy, Partly cloudy
+		- 2: Mist + Cloudy, Mist + Broken clouds, Mist + Few clouds, Mist
+		- 3: Light Snow, Light Rain + Thunderstorm + Scattered clouds, Light Rain + Scattered clouds
+		- 4: Heavy Rain + Ice Pallets + Thunderstorm + Mist, Snow + Fog
+	- temp : Normalized temperature in Celsius. The values are derived via (t-t_min)/(t_max-t_min), t_min=-8, t_max=+39 (only in hourly scale)
+	- atemp: Normalized feeling temperature in Celsius. The values are derived via (t-t_min)/(t_max-t_min), t_min=-16, t_max=+50 (only in hourly scale)
+	- hum: Normalized humidity. The values are divided to 100 (max)
+	- windspeed: Normalized wind speed. The values are divided to 67 (max)
+	- casual: count of casual users
+	- registered: count of registered users
+	- cnt: count of total rental bikes including both casual and registered
+
+# Data
+
+## Data import
+
+```{r}
+bike <- read.csv(file = "../bike+sharing+dataset/hour.csv", header = TRUE)
+```
+
+## Data structure
+
+```{r}
+str(bike)
+```
+
+## Duplicated values
+
+```{r}
+bike[duplicated(bike),]
+```
+
+**NO DUPLICATED DATA**
+
+## Data formatting
+
+```{r}
+bike$dteday <- NULL
+bike$instant <- NULL
+```
+
+Delete the dteday variable because the information as year, month, weekday, holiday, workingday, season and hour are already extracted.
+
+Delete the instant variable because it's just the row count
+
+
+## Data summary
+
+```{r}
+summary(bike)
+```
+All variables are already numeric.
+
+## Missing values
+
+```{r}
+colSums(is.na(bike))
+```
+
+**NO MISSING VALUES**
+
+# Exploratory data analysis
+
+```{r}
+library(corrplot)
+```
+
+## Correlation
+
+```{r}
+corrplot(cor(bike[,sapply(bike, is.numeric)]))
+```
+There seem to be:
+
+- Very strong correlation between cnt and registered, but it's only correlated because cnt = casual + registered. Next visual showcases this situation.
+- Very strong correlation between atemp and temp, but it's explained by the fact that atemp is just a feeling temperature of the nominal temperature
+- Strong correlation between season and month, but it's explained logically that the seasons include months. So these correlations aren't significant for our predictions.
+
+
+In fact, cnt is good correlated with the following variables:
+
+  - hr (positive)
+  - temp & atemp (positive)
+  - hum (negative)
+  
+**Next visuals will show in details the relationship between cnt and each independent variable**
+
+## Casual vs. Registered
+
+**Differences in rental behaviors between casual and registered users**
+
+```{r}
+barplot(c(sum(bike$casual), sum(bike$registered)), names.arg = c("Casual", "Registered"), main = "Sum for casual vs. registered users")
+```
+
+This basically explains why cnt is highly correlated with registered. There are a lot more registered customers than casual. cnt is just the sum of casual and registered.
+
+### by season
+
+```{r}
+par(mfrow = c(1,2))
+
+barplot(tapply(bike$casual, bike$season, sum), beside = TRUE, 
+        main = "Casual",
+        xlab = "Season",
+        ylab = "Casual")
+barplot(tapply(bike$registered, bike$season, sum), beside = TRUE, 
+        main = "Registered",
+        xlab = "Season",
+        ylab = "Count of Rentals")
+```
+
+Registered customers have more bike rentals in winter and fall than casual customers. 
+
+### by hour
+
+```{r}
+par(mfrow = c(1,2))
+
+barplot(tapply(bike$casual, bike$hr, sum), beside = TRUE, 
+        main = "Casual",
+        xlab = "Hour",
+        ylab = "Count of Rentals")
+barplot(tapply(bike$registered, bike$hr, sum), beside = TRUE, 
+        main = "Registered",
+        xlab = "Hour",
+        ylab = "Count of Rentals")
+```
+
+Casual customers mostly rent bikes in the mid-day time. For registered customers, the peak rental time is in the morning and evening, or, in other words, at the start and end of work.
+
+### by workingday
+
+```{r}
+par(mfrow = c(1,2))
+
+barplot(tapply(bike$casual, bike$workingday, sum), beside = TRUE, 
+        main = "Casual",
+        xlab = "Workingday | 0 = No",
+        ylab = "Count of Rentals")
+barplot(tapply(bike$registered, bike$workingday, sum), beside = TRUE, 
+        main = "Registered",
+        xlab = "1 = Yes | Workingday ",
+        ylab = "Count of Rentals")
+```
+
+After this visual we can assume that registered customers are local working people who use bike rentals to commute to work. Casual customers can be tourists , as their rental behavior is indifferent between working days and holidays. But these are just assumptions.
+
+### by weathersit
+
+```{r}
+par(mfrow = c(1,2))
+
+barplot(tapply(bike$casual, bike$atemp, sum), beside = TRUE, 
+        main = "Casual",
+        xlab = "Feeling Temperature",
+        ylab = "Count of Rentals")
+barplot(tapply(bike$registered, bike$atemp, sum), beside = TRUE, 
+        main = "Registered",
+        xlab = "Feeling Temperature",
+        ylab = "Count of Rentals")
+```
+
+Registered customers rent bikes on colder days also. Casulas not so often.
+
+## Total count (cnt)
+
+cnt = registered + casual
+
+**Overall rental behavior across different weather situations and daytimes**
+
+### Outliers cnt
+
+```{r}
+par(mfrow=c(1,2))
+boxplot(bike$cnt, main='Boxplot of bike$cnt')
+hist(bike$cnt,)
+```
+
+**TOTAL COUNT OF RENTALS HAS STRONG RIGHT-SKEWED DISTRIBUTION, THEREFORE IT HAS SOME OUTLIERS BEGINNING FROM APPROX. 650 RENTALS. THIS MAY BE EXPLAINED BY NON LINEAR DISTRIBUTION OF THE INDEPENDENT VARIABLES. EG. A LOT MORE TOURISTS IN SUMMER THEREFORE, BIG INCREASE IN BIKE RENTALS IN SUMMER FOR SHORT PERIOD** 
+
+### by season
+
+
+```{r}
+barplot(tapply(bike$cnt, bike$season, sum), beside = TRUE, 
+        main = "Count of Bike Rentals by Season",
+        xlab = "Season",
+        ylab = "Count of Rentals")
+```
+
+The are much more bike rentals in summer than in winter. And it's actually make sense, because most people would prefer to ride in warm summer times rather than in cold winter times.
+
+### by year
+
+```{r}
+barplot(tapply(bike$cnt, bike$yr, sum), beside = TRUE, 
+        main = "Count of Bike Rentals by Year",
+        xlab = "Year | 0 = 2011, 1 = 2012",
+        ylab = "Count of Rentals")
+```
+
+This visual can show that our bike rental company has gained popularity between years 2011 and 2012. There are more bike rentals in 2012.
+
+### by month
+
+```{r}
+barplot(tapply(bike$cnt, bike$mnth, sum), beside = TRUE, 
+        main = "Count of Bike Rentals by Month",
+        xlab = "Month",
+        ylab = "Count of Rentals")
+```
+
+This visual explains the correlation between season and month. It also correlates with season barplot. There are much more bike rentals in summer times. (from 5th to 9-10th month)
+
+### by hour
+
+```{r}
+barplot(tapply(bike$cnt, bike$hr, sum), beside = TRUE, 
+        main = "Count of Bike Rentals by Hour",
+        xlab = "Hour",
+        ylab = "Count of Rentals")
+```
+
+The bike rental peaks are mainly during the morning (8 am.) and evening (5 pm. - 7pm.; 17:00-19:00) hours.
+
+### by holiday and workingday
+
+```{r}
+par(mfrow = c(1,2))
+barplot(tapply(bike$cnt, bike$holiday, sum), beside = TRUE,
+        xlab = "Holiday | 0 = No, 1 = Yes",
+        ylab = "Count of Rentals")
+barplot(tapply(bike$cnt, bike$workingday, sum), beside = TRUE, 
+        xlab = "Workingday | 0 = No, 1 = Yes",
+        ylab = "Count of Rentals")
+```
+
+There are much less holidays than casual days. Therefore, not evenly distributed.
+
+There are more bike rentals on working days than on holidays or weekends.
+
+Combined with the hours and visual representation of the working day, it can be assumed that the majority of bike rental revenue is generated by working people who rent our bikes to commute to their place of work and return home during the evening hours
+
+
+### by weekday
+
+```{r}
+barplot(tapply(bike$cnt, bike$weekday, sum), beside = TRUE, 
+        main = "Count of Bike Rentals by Weekday",
+        xlab = "Weekday | 0 = Monday, 6 = Sunday",
+        ylab = "Count of Rentals")
+```
+
+No clear information between weekdays
+
+### by weather
+
+```{r}
+barplot(tapply(bike$cnt, bike$weathersit, sum), beside = TRUE, 
+        main = "Count of Bike Rentals by Weather",
+        xlab = "Weather",
+        ylab = "Count of Rentals")
+```
+
+    - 1: Clear, Few clouds, Partly cloudy, Partly cloudy
+    - 2: Mist + Cloudy, Mist + Broken clouds, Mist + Few clouds, Mist
+    - 3: Light Snow, Light Rain + Thunderstorm + Scattered clouds, Light Rain + Scattered clouds
+    - 4: Heavy Rain + Ice Pallets + Thunderstorm + Mist, Snow + Fog
+    
+Most rentals on weather category 1, which is also typical for summer times.
+
+### by temperature and feeling temperature (atemp)
+
+```{r}
+par(mfrow = c(1,2))
+
+barplot(tapply(bike$cnt, bike$temp, sum), beside = TRUE, 
+        xlab = "Temperature",
+        ylab = "Count of Rentals")
+
+barplot(tapply(bike$cnt, bike$atemp, sum), beside = TRUE, 
+        xlab = "Feeling temperature",
+        ylab = "Count of Rentals")
+```
+Temperature in C
+
+Normalized temperature by the following formula: (t-t_min)/(t_max-t_min)
+t_min = -8
+t_max = +39
+
+Feeling Temperature in C
+
+Normalized temperature by the following formula: (t-t_min)/(t_max-t_min)
+t_min = -16
+t_max = +50
+
+The distribution is left-skewed. That means that people tend to rent our bikes on more warm days, but not on burning hot days!
+
+### by humidity
+
+Normalized humididty. The values are divided to 100 (max)
+
+```{r}
+barplot(tapply(bike$cnt, bike$hum, sum), beside = TRUE, 
+        main = "Count of Bike Rentals by Humidity",
+        xlab = "Humidity",
+        ylab = "Count of Rentals")
+```
+ 
+Most rentals in humidity range of 0.30 to 0.70
+
+### by wind speed
+
+Normalized wind speed. The values are divided to 67 (max)
+
+```{r}
+barplot(tapply(bike$cnt, bike$windspeed, sum), beside = TRUE,
+        main = "Count of Bike Rentals by Wind Speed",
+        xlab = "Wind Speed",
+        ylab = "Count of Rentals")
+```
+
+This visual explains the negative correlation between wind speed and cnt. The lower wind speed the better for bike rental.
+
+# Data pre-processing before training
+
+## Fixing categorical variables
+
+
+  - season : season (1:winter, 2:spring, 3:summer, 4:fall)
+	- mnth : month ( 1 to 12)
+	- hr : hour (0 to 23)
+	- holiday : weather day is holiday or not (extracted from http://dchr.dc.gov/page/holiday-schedule)
+	- weekday : day of the week
+	- workingday : if day is neither weekend nor holiday is 1, otherwise is 0.
+	- weathersit 1,2,3,4.
+
+	
+```{r}
+# Convert 'season' to a factor
+bike$season <- factor(bike$season, levels = c(1, 2, 3, 4), labels = c("winter", "spring", "summer", "fall"))
+
+# Convert 'mnth' to a factor
+bike$mnth <- factor(bike$mnth)
+
+# Convert 'hr' to a factor
+bike$hr <- factor(bike$hr)
+
+# Convert 'holiday' to a factor
+bike$holiday <- factor(bike$holiday, levels = c(0, 1), labels = c("not_holiday", "holiday"))
+
+# Convert 'weekday' to a factor
+bike$weekday <- factor(bike$weekday, levels = c(0, 1, 2, 3, 4, 5, 6), labels = c("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"))
+
+# Convert 'workingday' to a factor
+bike$workingday <- factor(bike$workingday, levels = c(0, 1), labels = c("weekend/holiday", "working_day"))
+
+# Convert 'weathersit' to a factor
+bike$weathersit <- factor(bike$weathersit)
+```
+
+```{r}
+str(bike)
+```
+
+## Deleting casual and registered varaibles
+
+```{r}
+bike$casual <- NULL
+bike$registered <- NULL
+```
+
+We are going to train our model on total count of rental. Therefore, we delete the registered and casual variables.
+
+## Data split
+
+Split ratio:
+
+ - 80% train data
+ - 20% test data
+ 
+```{r}
+set.seed(123)
+sample_data <- sample(x = c(1,2), size = nrow(bike),replace = T, prob = c(0.8,0.2))
+train_data <- bike[sample_data == 1,]
+test_data <- bike[sample_data == 2,]
+```
+
+
+# Models
+
+## Importing libraries
+
+```{r}
+library(caret)
+library(randomForest)
+library(rpart)
+library(rpart.plot)
+```
+
+```{r}
+str(bike)
+```
+
+
+## Linear Regression
+
+```{r}
+full_lm <- lm(cnt ~ ., data = train_data)
+```
+
+```{r}
+stepwise_lm <- step(full_lm, direction = "backward")
+```
+
+```{r}
+summary(stepwise_lm)
+```
+
+Direction = backward
+
+Majority of variables are significant predictors.
+
+Interpretation of coefficients:
+
+- **Season**:
+
+  - seasonspring: The coefficient is 38.544, suggesting that, all else being equal, being in the spring season is associated with an increase of 38.544 units in the predicted count of bike rentals compared to the reference season.
+  - seasonsummer: The coefficient is 33.776, indicating that, all else being equal, being in the summer season is associated with an increase of 33.776 units in the predicted count.
+  - seasonfall: The coefficient is 66.179, implying that, all else being equal, being in the fall season is associated with an increase of 66.179 units in the predicted count.
+
+- **Month**:
+
+  - The coefficients for different months (mnth2 to mnth12) indicate the change in predicted bike rentals compared to the reference month (presumably mnth1). For example, mnth12 has a coefficient of -6.609, suggesting a decrease of 6.609 units in predicted bike rentals in December compared to the reference month.
+
+- **Hour**:
+
+  - The coefficients for different hours (hr1 to hr23) represent the change in predicted bike rentals for each hour compared to the reference hour. For example, hr7 has a coefficient of 173.485, indicating a substantial increase in predicted bike rentals at 7 a.m. compared to the reference hour.
+
+## Regression Tree
+
+```{r}
+full_rt <- rpart(cnt ~ ., data =train_data, control = list(c = 0))
+```
+
+
+```{r}
+rpart.plot(full_rt, extra = 101,)
+```
+
+```{r}
+rsq.rpart(full_rt)
+```
+
+```{r}
+pruned_rt <- prune(full_rt, cp = 0.044033) 
+```
+
+```{r}
+rpart.plot(pruned_rt)
+```
+
+The number of splits that is in our opinion optimal in order to minimize X Relative Error is **4 with cp = 0.044033**
+
+## Random forest
+
+```{r}
+rrf <- randomForest(cnt ~.,
+                    data = train_data,
+                    mtry = 4,
+                    importance = TRUE
+                    )
+```
+
+```{r}
+rrf
+```
+ 
+```{r}
+varImpPlot(rrf)
+```
+
+
+```{r}
+importance(rrf)
+```
+
+mtry = 4
+
+In decision tree algorithms, "mtry" represents the number of randomly selected features considered at each node when building a tree. Setting mtry to 4 means that, at each node, the algorithm selects 4 features from the dataset and evaluates them for the best split. This randomness helps prevent overfitting and enhances the model's ability to generalize to new data.
+
+
+- **Hour (hr)**:
+
+  - %IncMSE: 212.47504
+  - IncNodePurity: 234124681
+  - The high %IncMSE value for the 'hour' variable suggests that the hour of the day is a crucial predictor in the model. An increase in the hour leads to a substantial increase in Mean Squared Error, indicating that this variable contributes significantly to the model's predictive power. The corresponding IncNodePurity value reinforces this, indicating that splits based on the hour in the decision tree contribute to increased node purity.
+  
+- **Year (yr)**:
+
+  - %IncMSE: 228.41064
+  - IncNodePurity: 34848546
+  - The 'year' variable also has a high %IncMSE value, indicating that it is an important predictor. An increase in the year contributes significantly to the model's predictive performance. The IncNodePurity value suggests that splits based on the year contribute to improved node purity in the decision tree.
+  
+- **Temperature (temp)**:
+
+  - %IncMSE: 41.06882
+  - IncNodePurity: 34006466
+  - The 'temp' variable has a moderate %IncMSE value, suggesting that it is an important predictor for the model. An increase in temperature contributes to an increase in Mean Squared Error, indicating its relevance in predicting the target variable. The IncNodePurity value also supports the importance of 'temp' in decision tree splits.
+
+# Model Evaluations
+
+## Predictions
+
+```{r}
+predlm <- predict(stepwise_lm, newdata = test_data)
+predrt <- predict(pruned_rt, newdata = test_data)
+predrrf <- predict(rrf, newdata = test_data)
+```
+
+## Results
+
+```{r}
+resultslm <- postResample(predlm, test_data$cnt)
+resultsrt <- postResample(predrt, test_data$cnt)
+resultsrrf <- postResample(predrrf, test_data$cnt)
+```
+
+```{r}
+resultslm
+
+resultsrt
+
+resultsrrf
+```
+
+Factorizing the categorical variables helped to improve the linear model performance. The RMSE of LM went down by 27,40%
+
+
+**RANDOM FOREST HAS THE BEST PERFORMANCE**
+
+**RANDOM FOREST**
+
+- **Root Mean Squared Error (RMSE)**:
+  - Value: 46.0671290
+  - Interpretation: RMSE represents the square root of the average squared differences between the predicted values and the actual values. Lower RMSE values indicate better model performance, as they suggest that, on average, the model's predictions are closer to the actual values.
+  
+- **R-squared (Rsquared)**:
+  - Value: 0.9395406
+  - Interpretation: R-squared is a measure of the proportion of the variance in the dependent variable that is explained by the model. In this case, an R-squared of 0.9395406 suggests that approximately 94% of the variance in the bike rental count is explained by the Random Forest model. Higher R-squared values indicate better goodness of fit, meaning that the model captures a large portion of the variability in the target variable.
+  
+- **Mean Absolute Error (MAE)**:
+  - Value: 31.0706531
+  - Interpretation: MAE represents the average absolute differences between the predicted values and the actual values. In Random Forest model an MAE of 31.07 indicates the average magnitude of the errors in predicting bike rental counts. Like RMSE, lower MAE values are desirable, as they suggest that, on average, the model's predictions are closer to the actual values
+  
+## Actual target value / Predicted value
+
+```{r}
+plot(x=predlm, test_data$cnt, main = 'Linear Regression / Predictions')
+```
+
+
+```{r}
+plot(x=predrrf, y=test_data$cnt, main = 'Random Forest / Predictions')
+```
+
+These two plots showcase the better fit of Random Forest over the Linear Regression.
