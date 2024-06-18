@@ -1,5 +1,8 @@
 # Bike Sharing Demand Analysis Project
 
+![R](https://img.shields.io/badge/R-276DC3?style=for-the-badge&logo=R&logoColor=white)
+![ggplot2](https://img.shields.io/badge/ggplot2-3399FF?style=for-the-badge&logo=ggplot2&logoColor=white)
+
 ## Introduction
 This university project explores the demand for bike-sharing systems, focusing on how different factors such as weather, time, and user type influence rental patterns. The analysis aims to provide insights that could help improve the efficiency and marketing strategies of bike-sharing services.
 
